@@ -2,7 +2,7 @@
 
 Welcome to your **Personal Inventory Management System (IMS)**, a lightweight, locally run desktop application designed to track physical items, group them into categories, and track where they belong using physical location mapping.
 
-The project features a premium glassmorphic dark-theme Web UI, a high-performance Python API service, and a strict SQL database schema with automated event logging.
+The project features a premium glassmorphic light-theme React Web UI, a high-performance Python API service, and a strict SQL database schema with automated event logging.
 
 ---
 
@@ -25,24 +25,32 @@ We have established dedicated guides inside the `/docs/` folder for different as
 
 ```
 /
-├── AGENTS.md               # AI Instructions, roles (Product Owner, Backend, QA, etc.)
+├── AGENTS.md               # AI Instructions, agent role boundaries, and coding styles
 ├── README.md               # This file (overview and manual links)
-├── requirements.txt        # Python pip dependencies
-├── main.py                 # FastAPI backend application entry point
-├── database/
-│   ├── db.py               # Database connections, context managers, and seed utilities
-│   └── schema.sql          # Strict SQLite DDL constraints and default categories/locations
-├── public/                 # Web assets
-│   ├── index.html          # Semantic page layout
-│   ├── index.css           # Vanilla CSS theme and glassmorphic designs
-│   └── app.js              # Client state sync, event dispatching, and REST requests
-├── docs/                   # Developer documentation files
-│   ├── running.md          # Setup and run manual
-│   ├── datamodel.md        # Database constraint structures
-│   ├── tools.md            # Detailed tooling stack list
-│   └── testing.md          # Visual and unit test case checklist
-└── tests/
-    └── test_main.py        # Automated API integration tests
+├── scripts/                # Dev convenience startup and test scripts
+│   ├── start_dev.sh        # Starts backend and frontend dev servers concurrently
+│   └── run_tests.sh        # Runs API integration tests
+├── frontend/               # React client web application (Vite on port 3000)
+│   ├── package.json        # Frontend configuration and dependencies
+│   ├── vite.config.js      # Vite dev server options
+│   ├── index.html          # HTML Template shell
+│   └── src/                # React components & styles
+│       ├── main.jsx        # Mounting point
+│       ├── App.jsx         # React application file
+│       └── index.css       # Premium Light Theme glassmorphic styles
+├── backend/                # FastAPI backend API service (Uvicorn on port 8000)
+│   ├── requirements.txt    # Python package dependencies
+│   ├── main.py             # FastAPI entry point
+│   ├── database/           # SQLite schema and migration utilities
+│   │   ├── db.py           # SQLite connection pools and initializer
+│   │   └── schema.sql      # Strict SQLite database DDL
+│   └── tests/              # Backend testing suite
+│       └── test_main.py    # Automated integration API tests
+└── docs/                   # Developer documentation files
+    ├── running.md          # Setup and execution guide
+    ├── datamodel.md        # Database schema constraints guide
+    ├── tools.md            # Tooling and stack information
+    └── testing.md          # Automated and manual testing guide
 ```
 
 ---
@@ -51,15 +59,25 @@ We have established dedicated guides inside the `/docs/` folder for different as
 
 To boot up the inventory system immediately:
 
-1. **Build virtual environment and install packages**:
+1. **Activate Virtual Environment and Install Backend Packages**:
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
-   pip install -r requirements.txt
+   pip install -r backend/requirements.txt
    ```
-2. **Launch the backend server**:
+
+2. **Install Frontend Dependencies**:
    ```bash
-   uvicorn main:app --reload --port 8000
+   cd frontend
+   npm install
+   cd ..
    ```
-3. **Open the App**:
-   Go to [http://localhost:8000/](http://localhost:8000/) in your web browser.
+
+3. **Launch the Services Concurrently**:
+   Run the dev script from the project root:
+   ```bash
+   bash scripts/start_dev.sh
+   ```
+
+4. **Open the App**:
+   Navigate to [http://localhost:3000/](http://localhost:3000/) in your browser. The React client will automatically communicate with the FastAPI backend on [http://localhost:8000/](http://localhost:8000/).

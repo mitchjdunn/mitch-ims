@@ -16,15 +16,19 @@ This is a **Personal Inventory Management System (IMS)** designed to run locally
 ├── AGENTS.md               # This file (AI instructions, personas, guidelines)
 ├── README.md               # Quickstart and project reference manual
 ├── scripts/                # Dev convenience startup and test scripts
-│   ├── start_dev.sh        # Dev server script (port 8000)
+│   ├── start_dev.sh        # Dev server script (ports 3000 & 8000)
 │   └── run_tests.sh        # Integration tests runner script
-├── frontend/               # Frontend web assets
-│   ├── index.html          # Web UI layout
-│   ├── index.css           # Custom glassmorphic styles
-│   └── app.js              # State management and DOM interaction scripts
+├── frontend/               # Frontend React/Vite Client
+│   ├── index.html          # HTML Shell layout
+│   ├── vite.config.js      # Vite dev server options (runs on port 3000)
+│   ├── package.json        # Node dependencies & dev commands
+│   └── src/                # React source files
+│       ├── main.jsx        # Mounting entry point
+│       ├── App.jsx         # React State and UI Controller
+│       └── index.css       # Premium Light Theme glassmorphic styles
 ├── backend/                # Backend API service
 │   ├── requirements.txt    # Python dependencies
-│   ├── main.py             # FastAPI backend app entry point
+│   ├── main.py             # FastAPI backend app entry point (runs on port 8000)
 │   ├── database/           # Database management
 │   │   ├── db.py           # SQLite connections & seed scripts
 │   │   └── schema.sql      # Strict SQLite database DDL
@@ -78,7 +82,7 @@ When acting in this workspace, you should align with one of these roles based on
 ### 📝 Documentation & Technical Writer Agent
 - **Responsibilities**: Creates, structures, and maintains markdown documentation for the project, covering setup, database models, tools, and codebase structure.
 - **Rules**:
-  - Keep documentation up to date whenever database schemas, API routes, or system configurations change.
+  - Keep documentation up to date (including the root [README.md](file:///Users/mitch/projects/ims/README.md) and [AGENTS.md](file:///Users/mitch/projects/ims/AGENTS.md)) whenever database schemas, API routes, folder layouts, or system configurations change.
   - Document details inside the `/docs/` folder or root `README.md` using clear, semantic markdown.
   - Ensure all documentation files link to each other using valid markdown file links.
 
