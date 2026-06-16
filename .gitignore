@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-__pycache__
+backend/__pycache__
 .venv
 backend/inventory.db
 scratch
