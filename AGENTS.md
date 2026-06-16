@@ -13,6 +13,17 @@ This is a **Personal Inventory Management System (IMS)** designed to run locally
 ### Directory Structure
 ```
 /
+├── .agents/                # AI Agent roles context and custom skills
+│   └── skills/             # Custom agent skill folders (instruction guidelines)
+│       ├── system-architect/
+│       ├── database-engineer/
+│       ├── backend-developer/
+│       ├── frontend-designer/
+│       ├── qa-verification/
+│       ├── documentation-writer/
+│       ├── feature-specification/
+│       ├── feature-coordinator/
+│       └── release-manager/
 ├── AGENTS.md               # This file (AI instructions, personas, guidelines)
 ├── README.md               # Quickstart and project reference manual
 ├── scripts/                # Dev convenience startup and test scripts
@@ -38,7 +49,9 @@ This is a **Personal Inventory Management System (IMS)** designed to run locally
     ├── running.md          # Environment setup and execution guides
     ├── datamodel.md        # Database schema constraints and logs flow
     ├── tools.md            # Detailed summary of developer tooling
-    └── testing.md          # Detailed summary of test cases and strategies
+    ├── testing.md          # Detailed summary of test cases and strategies
+    └── features/           # Feature specification storage backlog
+        └── README.md       # Features list index and creation template
 ```
 
 ---
@@ -85,6 +98,28 @@ When acting in this workspace, you should align with one of these roles based on
   - Keep documentation up to date (including the root [README.md](file:///Users/mitch/projects/ims/README.md) and [AGENTS.md](file:///Users/mitch/projects/ims/AGENTS.md)) whenever database schemas, API routes, folder layouts, or system configurations change.
   - Document details inside the `/docs/` folder or root `README.md` using clear, semantic markdown.
   - Ensure all documentation files link to each other using valid markdown file links.
+
+### 📋 Feature Specification Agent
+- **Responsibilities**: Defines and designs user stories, requirements, and technical specifications for new features. Creates and manages files in `/docs/features/`.
+- **Rules**:
+  - Follow the standard feature document template (Overview, User Stories, UI/UX, API, DB Schema, QA Checklist) for every new spec.
+  - Cross-reference existing files in `docs/` to ensure architectural continuity.
+
+### 🔀 Feature Coordinator Agent
+- **Responsibilities**: Reads the feature specifications under `/docs/features/`, determines implementation scope and dependencies, and decides which agent roles to hand off the work to.
+- **Rules**:
+  - Produce task lists mapping specific feature checklist items to appropriate developer roles (e.g., Database Engineer, Backend Developer, Frontend Designer, QA).
+  - Define exact dependency ordering (e.g. database schema migrations first, followed by backend endpoint logic, then frontend design implementation, and finally QA verification).
+
+### 🚀 Release Manager Agent
+- **Responsibilities**: Organizes features into versioned releases, defines release plans, manages Git branch lifecycles (master, develop, feature, and release branches), and tags releases.
+- **Rules**:
+  - Follow the branching model:
+    - `master` represents production-ready code.
+    - `develop` represents active feature integration.
+    - Feature branches branch off `develop` as `feature/feature-name` and merge back to `develop` via pull request.
+    - Release branches branch off `develop` as `release/vX.Y.Z` for stabilization, merging to both `master` (tagged) and `develop` on release.
+  - Never commit directly to `master` or `develop`.
 
 ---
 

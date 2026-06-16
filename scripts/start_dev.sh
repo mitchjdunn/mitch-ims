@@ -16,12 +16,12 @@ fi
 trap 'echo "Stopping microservices..."; kill $(jobs -p) 2>/dev/null; exit' SIGINT SIGTERM EXIT
 
 # Start backend (API)
-echo "Starting Backend API on http://127.0.0.1:8000..."
+echo "Starting Backend API on http://localhost:8000..."
 cd "$PROJECT_ROOT/backend"
 uvicorn main:app --reload --port 8000 &
 
 # Start frontend (React-Vite Server)
-echo "Starting Frontend Web Server on http://127.0.0.1:3000..."
+echo "Starting Frontend Web Server on http://localhost:3000..."
 cd "$PROJECT_ROOT/frontend"
 npm run dev &
 

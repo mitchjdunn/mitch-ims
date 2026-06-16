@@ -18,13 +18,16 @@ We have established dedicated guides inside the `/docs/` folder for different as
    - Summary of languages, runtimes, dependencies, styling systems, and validation tools used to build the software engineering pipeline.
 4. **[Testing Strategy & Test Cases](file:///Users/mitch/projects/ims/docs/testing.md)**
    - Detailed blueprint of unittest frameworks, integration mock clients, Playwright browser test coverage, and visual QA check routines.
+5. **[Feature Specifications](file:///Users/mitch/projects/ims/docs/features/README.md)**
+   - Centrally stored feature specs directory housing user stories, UI/UX demands, endpoints design, DDL modifications, and QA checklists.
 
 ---
 
 ## 🗂️ Workspace Layout
 
 ```
-/
+├── .agents/                # AI Agent custom skills folders
+│   └── skills/             # Custom agent skill folders (instruction guidelines)
 ├── AGENTS.md               # AI Instructions, agent role boundaries, and coding styles
 ├── README.md               # This file (overview and manual links)
 ├── scripts/                # Dev convenience startup and test scripts
@@ -50,7 +53,9 @@ We have established dedicated guides inside the `/docs/` folder for different as
     ├── running.md          # Setup and execution guide
     ├── datamodel.md        # Database schema constraints guide
     ├── tools.md            # Tooling and stack information
-    └── testing.md          # Automated and manual testing guide
+    ├── testing.md          # Automated and manual testing guide
+    └── features/           # Feature specification storage backlog
+        └── README.md       # Features list index and creation template
 ```
 
 ---
