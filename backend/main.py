@@ -68,6 +68,12 @@ class LocationResponse(BaseModel):
     created_at: str
     updated_at: str
 
+class CategoryBookmarksUpdate(BaseModel):
+    category_ids: List[int] = Field(..., description="List of category IDs to bookmark")
+
+class LocationBookmarksUpdate(BaseModel):
+    location_ids: List[int] = Field(..., description="List of location IDs to bookmark")
+
 class ItemCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150, description="Name of the inventory item")
     description: Optional[str] = Field(None, max_length=1000)
@@ -218,6 +224,50 @@ def log_inventory_change(
 
 
 # --- API Endpoint Handlers ---
+
+# --- Bookmarks Endpoints ---
+
+@app.get("/api/v1/bookmarks/categories", response_model=List[int])
+def read_category_bookmarks():
+    with get_db() as conn:
+        cursor = conn.execute("SELECT category_id FROM category_bookmarks")
+        rows = cursor.fetchall()
+        return [row["category_id"] for row in rows]
+
+@app.put("/api/v1/bookmarks/categories", status_code=status.HTTP_200_OK)
+def update_category_bookmarks(bookmarks: CategoryBookmarksUpdate):
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM category_bookmarks")
+            for cid in bookmarks.category_ids:
+                conn.execute("INSERT INTO category_bookmarks (category_id) VALUES (?)", (cid,))
+        return {"detail": "Category bookmarks successfully updated."}
+    except sqlite3.IntegrityError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid category ID(s) provided. Database error: {str(e)}"
+        )
+
+@app.get("/api/v1/bookmarks/locations", response_model=List[int])
+def read_location_bookmarks():
+    with get_db() as conn:
+        cursor = conn.execute("SELECT location_id FROM location_bookmarks")
+        rows = cursor.fetchall()
+        return [row["location_id"] for row in rows]
+
+@app.put("/api/v1/bookmarks/locations", status_code=status.HTTP_200_OK)
+def update_location_bookmarks(bookmarks: LocationBookmarksUpdate):
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM location_bookmarks")
+            for lid in bookmarks.location_ids:
+                conn.execute("INSERT INTO location_bookmarks (location_id) VALUES (?)", (lid,))
+        return {"detail": "Location bookmarks successfully updated."}
+    except sqlite3.IntegrityError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid location ID(s) provided. Database error: {str(e)}"
+        )
 
 # --- Categories Endpoints ---
 

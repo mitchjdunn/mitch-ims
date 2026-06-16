@@ -20,12 +20,37 @@ export default function App() {
     const itemDialogRef = useRef(null);
     const categoryDialogRef = useRef(null);
     const locationDialogRef = useRef(null);
+    const catBookmarkDialogRef = useRef(null);
+    const locBookmarkDialogRef = useRef(null);
 
     // Form tracking states
     const [editingItemId, setEditingItemId] = useState(null);
     const [itemFormError, setItemFormError] = useState('');
     const [catFormError, setCatFormError] = useState('');
     const [locFormError, setLocFormError] = useState('');
+
+    // Bookmarks states
+    const [bookmarkedCategoryIds, setBookmarkedCategoryIds] = useState([]);
+    const [bookmarkedLocationIds, setBookmarkedLocationIds] = useState([]);
+    const [tempCatBookmarks, setTempCatBookmarks] = useState([]);
+    const [tempLocBookmarks, setTempLocBookmarks] = useState([]);
+    const [showBookmarkedCategoriesOnly, setShowBookmarkedCategoriesOnly] = useState(() => {
+        const saved = localStorage.getItem('ims_show_bookmarked_categories_only');
+        return saved ? JSON.parse(saved) : false;
+    });
+    const [showBookmarkedLocationsOnly, setShowBookmarkedLocationsOnly] = useState(() => {
+        const saved = localStorage.getItem('ims_show_bookmarked_locations_only');
+        return saved ? JSON.parse(saved) : false;
+    });
+
+    // Sync toggle states to local storage
+    useEffect(() => {
+        localStorage.setItem('ims_show_bookmarked_categories_only', JSON.stringify(showBookmarkedCategoriesOnly));
+    }, [showBookmarkedCategoriesOnly]);
+
+    useEffect(() => {
+        localStorage.setItem('ims_show_bookmarked_locations_only', JSON.stringify(showBookmarkedLocationsOnly));
+    }, [showBookmarkedLocationsOnly]);
 
     // Form inputs state
     const [itemFields, setItemFields] = useState({
@@ -66,9 +91,69 @@ export default function App() {
         await Promise.all([
             fetchCategories(),
             fetchLocations(),
-            fetchLogs()
+            fetchLogs(),
+            fetchBookmarks()
         ]);
         await fetchItems();
+    };
+
+    const fetchBookmarks = async () => {
+        try {
+            const [catRes, locRes] = await Promise.all([
+                fetch(`${API_BASE}/bookmarks/categories`),
+                fetch(`${API_BASE}/bookmarks/locations`)
+            ]);
+            if (catRes.ok) {
+                const catIds = await catRes.json();
+                setBookmarkedCategoryIds(catIds);
+            }
+            if (locRes.ok) {
+                const locIds = await locRes.json();
+                setBookmarkedLocationIds(locIds);
+            }
+        } catch (err) {
+            console.error('Error fetching bookmarks:', err);
+        }
+    };
+
+    const handleSaveCategoryBookmarks = async (selectedIds) => {
+        try {
+            const res = await fetch(`${API_BASE}/bookmarks/categories`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category_ids: selectedIds })
+            });
+            if (!res.ok) throw new Error('Failed to update category bookmarks');
+            setBookmarkedCategoryIds(selectedIds);
+            catBookmarkDialogRef.current.close();
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+
+    const handleSaveLocationBookmarks = async (selectedIds) => {
+        try {
+            const res = await fetch(`${API_BASE}/bookmarks/locations`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ location_ids: selectedIds })
+            });
+            if (!res.ok) throw new Error('Failed to update location bookmarks');
+            setBookmarkedLocationIds(selectedIds);
+            locBookmarkDialogRef.current.close();
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+
+    const openEditCategoryBookmarks = () => {
+        setTempCatBookmarks([...bookmarkedCategoryIds]);
+        catBookmarkDialogRef.current.showModal();
+    };
+
+    const openEditLocationBookmarks = () => {
+        setTempLocBookmarks([...bookmarkedLocationIds]);
+        locBookmarkDialogRef.current.showModal();
     };
 
     const fetchCategories = async () => {
@@ -370,22 +455,44 @@ export default function App() {
                             <button className="btn-icon" onClick={() => categoryDialogRef.current.showModal()} title="Add Category">＋</button>
                         </div>
                         <div className="chip-container">
-                            <div 
-                                className={`chip ${selectedCategory === '' ? 'active' : ''}`}
-                                onClick={() => setSelectedCategory('')}
-                            >
-                                All Categories
-                            </div>
-                            {categories.map(cat => (
+                            <div className="all-chip-row">
                                 <div 
-                                    key={cat.id} 
-                                    className={`chip ${selectedCategory === cat.id ? 'active' : ''}`}
-                                    onClick={() => setSelectedCategory(selectedCategory === cat.id ? '' : cat.id)}
-                                    title={cat.description || ''}
+                                    className={`chip ${selectedCategory === '' ? 'active' : ''}`}
+                                    onClick={() => setSelectedCategory('')}
+                                    style={{ flex: 1 }}
                                 >
-                                    {cat.name}
+                                    All Categories
                                 </div>
-                            ))}
+                                {bookmarkedCategoryIds.length > 0 && (
+                                    <button 
+                                        className={`btn-bookmark-toggle ${showBookmarkedCategoriesOnly ? 'active' : ''}`}
+                                        onClick={() => setShowBookmarkedCategoriesOnly(!showBookmarkedCategoriesOnly)}
+                                        title={showBookmarkedCategoriesOnly ? "Show All Categories" : "Show Bookmarked Only"}
+                                    >
+                                        🔖
+                                    </button>
+                                )}
+                                <button 
+                                    className="btn-bookmark-edit"
+                                    onClick={openEditCategoryBookmarks}
+                                    title="Manage Bookmarks"
+                                >
+                                    ⚙️
+                                </button>
+                            </div>
+                            {categories
+                                .filter(cat => !showBookmarkedCategoriesOnly || bookmarkedCategoryIds.includes(cat.id))
+                                .map(cat => (
+                                    <div 
+                                        key={cat.id} 
+                                        className={`chip ${selectedCategory === cat.id ? 'active' : ''}`}
+                                        onClick={() => setSelectedCategory(selectedCategory === cat.id ? '' : cat.id)}
+                                        title={cat.description || ''}
+                                    >
+                                        {cat.name}
+                                    </div>
+                                ))
+                            }
                         </div>
                     </section>
 
@@ -395,22 +502,44 @@ export default function App() {
                             <button className="btn-icon" onClick={() => locationDialogRef.current.showModal()} title="Add Location">＋</button>
                         </div>
                         <div className="chip-container">
-                            <div 
-                                className={`chip ${selectedLocation === '' ? 'active' : ''}`}
-                                onClick={() => setSelectedLocation('')}
-                            >
-                                All Locations
-                            </div>
-                            {locations.map(loc => (
+                            <div className="all-chip-row">
                                 <div 
-                                    key={loc.id} 
-                                    className={`chip ${selectedLocation === loc.id ? 'active' : ''}`}
-                                    onClick={() => setSelectedLocation(selectedLocation === loc.id ? '' : loc.id)}
-                                    title={loc.description || ''}
+                                    className={`chip ${selectedLocation === '' ? 'active' : ''}`}
+                                    onClick={() => setSelectedLocation('')}
+                                    style={{ flex: 1 }}
                                 >
-                                    {loc.name}
+                                    All Locations
                                 </div>
-                            ))}
+                                {bookmarkedLocationIds.length > 0 && (
+                                    <button 
+                                        className={`btn-bookmark-toggle ${showBookmarkedLocationsOnly ? 'active' : ''}`}
+                                        onClick={() => setShowBookmarkedLocationsOnly(!showBookmarkedLocationsOnly)}
+                                        title={showBookmarkedLocationsOnly ? "Show All Locations" : "Show Bookmarked Only"}
+                                    >
+                                        🔖
+                                    </button>
+                                )}
+                                <button 
+                                    className="btn-bookmark-edit"
+                                    onClick={openEditLocationBookmarks}
+                                    title="Manage Bookmarks"
+                                >
+                                    ⚙️
+                                </button>
+                            </div>
+                            {locations
+                                .filter(loc => !showBookmarkedLocationsOnly || bookmarkedLocationIds.includes(loc.id))
+                                .map(loc => (
+                                    <div 
+                                        key={loc.id} 
+                                        className={`chip ${selectedLocation === loc.id ? 'active' : ''}`}
+                                        onClick={() => setSelectedLocation(selectedLocation === loc.id ? '' : loc.id)}
+                                        title={loc.description || ''}
+                                    >
+                                        {loc.name}
+                                    </div>
+                                ))
+                            }
                         </div>
                     </section>
                 </aside>
@@ -789,6 +918,98 @@ export default function App() {
                     <div className="dialog-actions">
                         <button type="button" className="btn-secondary" onClick={() => locationDialogRef.current.close()}>Cancel</button>
                         <button type="submit" className="btn-primary">Save Location</button>
+                    </div>
+                </form>
+            </dialog>
+
+            {/* Edit Category Bookmarks Dialog */}
+            <dialog 
+                ref={catBookmarkDialogRef} 
+                className="glass-dialog"
+                onClick={(e) => handleDialogBackdropClick(e, catBookmarkDialogRef)}
+            >
+                <form 
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        handleSaveCategoryBookmarks(tempCatBookmarks);
+                    }}
+                >
+                    <h2>Manage Bookmarked Categories</h2>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                        Select the categories to pin to your sidebar filter list.
+                    </p>
+
+                    <div className="checkbox-list">
+                        {categories.map(cat => {
+                            const isChecked = tempCatBookmarks.includes(cat.id);
+                            return (
+                                <label key={cat.id} className="checkbox-item">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setTempCatBookmarks([...tempCatBookmarks, cat.id]);
+                                            } else {
+                                                setTempCatBookmarks(tempCatBookmarks.filter(id => id !== cat.id));
+                                            }
+                                        }}
+                                    />
+                                    <span>{cat.name}</span>
+                                </label>
+                            );
+                        })}
+                    </div>
+
+                    <div className="dialog-actions">
+                        <button type="button" className="btn-secondary" onClick={() => catBookmarkDialogRef.current.close()}>Cancel</button>
+                        <button type="submit" className="btn-primary">Save Bookmarks</button>
+                    </div>
+                </form>
+            </dialog>
+
+            {/* Edit Location Bookmarks Dialog */}
+            <dialog 
+                ref={locBookmarkDialogRef} 
+                className="glass-dialog"
+                onClick={(e) => handleDialogBackdropClick(e, locBookmarkDialogRef)}
+            >
+                <form 
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        handleSaveLocationBookmarks(tempLocBookmarks);
+                    }}
+                >
+                    <h2>Manage Bookmarked Locations</h2>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                        Select the physical locations to pin to your sidebar filter list.
+                    </p>
+
+                    <div className="checkbox-list">
+                        {locations.map(loc => {
+                            const isChecked = tempLocBookmarks.includes(loc.id);
+                            return (
+                                <label key={loc.id} className="checkbox-item">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setTempLocBookmarks([...tempLocBookmarks, loc.id]);
+                                            } else {
+                                                setTempLocBookmarks(tempLocBookmarks.filter(id => id !== loc.id));
+                                            }
+                                        }}
+                                    />
+                                    <span>{loc.name}</span>
+                                </label>
+                            );
+                        })}
+                    </div>
+
+                    <div className="dialog-actions">
+                        <button type="button" className="btn-secondary" onClick={() => locBookmarkDialogRef.current.close()}>Cancel</button>
+                        <button type="submit" className="btn-primary">Save Bookmarks</button>
                     </div>
                 </form>
             </dialog>

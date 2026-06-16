@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS inventory_logs (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Bookmarks tables for categories and locations
+CREATE TABLE IF NOT EXISTS category_bookmarks (
+    category_id INTEGER PRIMARY KEY REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS location_bookmarks (
+    location_id INTEGER PRIMARY KEY REFERENCES locations(id) ON DELETE CASCADE
+);
+
 -- Triggers to auto-update the updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS update_categories_timestamp 
 AFTER UPDATE ON categories

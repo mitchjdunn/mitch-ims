@@ -173,6 +173,46 @@ class TestInventoryAPI(unittest.TestCase):
         self.assertEqual(logs[0]["item_name"], "Circular Saw")
         self.assertIn("removed from inventory", logs[0]["notes"])
 
+    def test_07_bookmark_endpoints_and_cascades(self):
+        """Verify bookmark retrieval, updates, validation, and cascade deletion."""
+        # 1. Initially bookmarks should be empty
+        cat_res = self.client.get("/api/v1/bookmarks/categories")
+        self.assertEqual(cat_res.status_code, 200)
+        self.assertEqual(cat_res.json(), [])
+
+        loc_res = self.client.get("/api/v1/bookmarks/locations")
+        self.assertEqual(loc_res.status_code, 200)
+        self.assertEqual(loc_res.json(), [])
+
+        # 2. Update bookmarks (valid IDs)
+        put_cat = self.client.put("/api/v1/bookmarks/categories", json={"category_ids": [1, 2]})
+        self.assertEqual(put_cat.status_code, 200)
+        
+        put_loc = self.client.put("/api/v1/bookmarks/locations", json={"location_ids": [1, 3]})
+        self.assertEqual(put_loc.status_code, 200)
+
+        # 3. Read back and verify
+        cat_res = self.client.get("/api/v1/bookmarks/categories")
+        self.assertEqual(cat_res.json(), [1, 2])
+
+        loc_res = self.client.get("/api/v1/bookmarks/locations")
+        self.assertEqual(loc_res.json(), [1, 3])
+
+        # 4. Error state: try adding non-existent category/location IDs
+        err_cat = self.client.put("/api/v1/bookmarks/categories", json={"category_ids": [999]})
+        self.assertEqual(err_cat.status_code, 400)
+
+        err_loc = self.client.put("/api/v1/bookmarks/locations", json={"location_ids": [999]})
+        self.assertEqual(err_loc.status_code, 400)
+
+        # 5. Verify Cascade Deletion: delete category 2 in DB and check cascade
+        from database.db import get_db
+        with get_db() as conn:
+            conn.execute("DELETE FROM categories WHERE id = 2")
+        
+        cat_res_after = self.client.get("/api/v1/bookmarks/categories")
+        self.assertEqual(cat_res_after.json(), [1])
+
 
 if __name__ == "__main__":
     unittest.main()
