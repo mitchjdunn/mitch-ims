@@ -32,6 +32,30 @@ def init_db():
         raise FileNotFoundError(f"Schema SQL file not found at {SCHEMA_PATH}")
     
     print(f"Initializing database at: {DB_PATH}")
+    
+    # Check if DB_PATH exists and see if categories has parent_id column
+    if os.path.exists(DB_PATH):
+        try:
+            with get_db() as conn:
+                # Check if categories table exists first
+                table_check = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='categories'"
+                ).fetchone()
+                if table_check:
+                    cursor = conn.execute("PRAGMA table_info(categories)")
+                    columns = [row["name"] for row in cursor.fetchall()]
+                    if "parent_id" not in columns:
+                        print("Schema upgrade required: parent_id missing. Dropping old tables...")
+                        # Drop tables in safe order
+                        conn.execute("DROP TABLE IF EXISTS items")
+                        conn.execute("DROP TABLE IF EXISTS category_bookmarks")
+                        conn.execute("DROP TABLE IF EXISTS location_bookmarks")
+                        conn.execute("DROP TABLE IF EXISTS categories")
+                        conn.execute("DROP TABLE IF EXISTS locations")
+                        conn.execute("DROP TABLE IF EXISTS inventory_logs")
+        except Exception as e:
+            print(f"Warning during schema validation check: {e}")
+
     with get_db() as conn:
         with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
             schema_sql = f.read()

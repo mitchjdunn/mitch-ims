@@ -213,6 +213,75 @@ class TestInventoryAPI(unittest.TestCase):
         cat_res_after = self.client.get("/api/v1/bookmarks/categories")
         self.assertEqual(cat_res_after.json(), [1])
 
+    def test_08_hierarchical_filters_and_cycles(self):
+        """Verify recursive hierarchical queries and cycle prevention rules."""
+        # 1. Create a parent category
+        res = self.client.post("/api/v1/categories", json={"name": "Audio", "description": "Audio items"})
+        self.assertEqual(res.status_code, 201)
+        audio_id = res.json()["id"]
+
+        # 2. Create subcategory
+        res2 = self.client.post("/api/v1/categories", json={"name": "Headphones", "parent_id": audio_id})
+        self.assertEqual(res2.status_code, 201)
+        headphones_id = res2.json()["id"]
+
+        # 3. Create sub-subcategory
+        res3 = self.client.post("/api/v1/categories", json={"name": "Wireless", "parent_id": headphones_id})
+        self.assertEqual(res3.status_code, 201)
+        wireless_id = res3.json()["id"]
+
+        # 4. Attempt to create cycle: set parent of Audio to Wireless (Wireless is descendant of Audio)
+        cycle_res = self.client.put(f"/api/v1/categories/{audio_id}", json={"parent_id": wireless_id})
+        self.assertEqual(cycle_res.status_code, 400)
+        self.assertIn("Cycle detected", cycle_res.json()["detail"])
+
+        # 5. Create items in parent, child, grandchild categories
+        item_audio = self.client.post("/api/v1/items", json={
+            "name": "Audio Mixer",
+            "category_id": audio_id,
+            "quantity": 1
+        })
+        self.assertEqual(item_audio.status_code, 201)
+
+        item_headphones = self.client.post("/api/v1/items", json={
+            "name": "Sony WH-1000XM4",
+            "category_id": headphones_id,
+            "quantity": 1
+        })
+        self.assertEqual(item_headphones.status_code, 201)
+
+        item_wireless = self.client.post("/api/v1/items", json={
+            "name": "AirPods Pro",
+            "category_id": wireless_id,
+            "quantity": 2
+        })
+        self.assertEqual(item_wireless.status_code, 201)
+
+        # 6. Retrieve items filtered by parent category Audio -> should return all 3
+        res_audio = self.client.get(f"/api/v1/items?category_id={audio_id}")
+        self.assertEqual(res_audio.status_code, 200)
+        audio_items = [i["name"] for i in res_audio.json()]
+        self.assertEqual(len(audio_items), 3)
+        self.assertIn("Audio Mixer", audio_items)
+        self.assertIn("Sony WH-1000XM4", audio_items)
+        self.assertIn("AirPods Pro", audio_items)
+
+        # 7. Retrieve items filtered by Headphones -> should return Headphones and Wireless (2 items)
+        res_headphones = self.client.get(f"/api/v1/items?category_id={headphones_id}")
+        self.assertEqual(res_headphones.status_code, 200)
+        hp_items = [i["name"] for i in res_headphones.json()]
+        self.assertEqual(len(hp_items), 2)
+        self.assertNotIn("Audio Mixer", hp_items)
+        self.assertIn("Sony WH-1000XM4", hp_items)
+        self.assertIn("AirPods Pro", hp_items)
+
+        # 8. Retrieve items filtered by Wireless -> should return only AirPods Pro (1 item)
+        res_wireless = self.client.get(f"/api/v1/items?category_id={wireless_id}")
+        self.assertEqual(res_wireless.status_code, 200)
+        wl_items = [i["name"] for i in res_wireless.json()]
+        self.assertEqual(len(wl_items), 1)
+        self.assertEqual(wl_items[0], "AirPods Pro")
+
 
 if __name__ == "__main__":
     unittest.main()

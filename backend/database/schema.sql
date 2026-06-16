@@ -6,20 +6,28 @@ PRAGMA foreign_keys = ON;
 -- Categories table
 CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL CHECK(length(trim(name)) > 0),
+    name TEXT NOT NULL CHECK(length(trim(name)) > 0),
     description TEXT,
+    parent_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(name, parent_id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_root_name ON categories(name) WHERE parent_id IS NULL;
 
 -- Locations table
 CREATE TABLE IF NOT EXISTS locations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL CHECK(length(trim(name)) > 0),
+    name TEXT NOT NULL CHECK(length(trim(name)) > 0),
     description TEXT,
+    parent_id INTEGER REFERENCES locations(id) ON DELETE CASCADE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(name, parent_id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_root_name ON locations(name) WHERE parent_id IS NULL;
 
 -- Items table
 CREATE TABLE IF NOT EXISTS items (

@@ -35,6 +35,7 @@ app.add_middleware(
 class CategoryCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Unique name of the category")
     description: Optional[str] = Field(None, max_length=500)
+    parent_id: Optional[int] = Field(None, description="Optional parent category ID")
 
     @field_validator("name")
     @classmethod
@@ -47,12 +48,14 @@ class CategoryResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    parent_id: Optional[int]
     created_at: str
     updated_at: str
 
 class LocationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Unique physical location name")
     description: Optional[str] = Field(None, max_length=500)
+    parent_id: Optional[int] = Field(None, description="Optional parent location ID")
 
     @field_validator("name")
     @classmethod
@@ -65,8 +68,33 @@ class LocationResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    parent_id: Optional[int]
     created_at: str
     updated_at: str
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    parent_id: Optional[int] = Field(None)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_empty(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not v.strip():
+            raise ValueError("Category name cannot be empty or only whitespace")
+        return v.strip() if v else v
+
+class LocationUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    parent_id: Optional[int] = Field(None)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_empty(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not v.strip():
+            raise ValueError("Location name cannot be empty or only whitespace")
+        return v.strip() if v else v
 
 class CategoryBookmarksUpdate(BaseModel):
     category_ids: List[int] = Field(..., description="List of category IDs to bookmark")
@@ -189,6 +217,23 @@ class LogResponse(BaseModel):
 
 # --- Helper Database Operations ---
 
+def check_cycle(conn: sqlite3.Connection, table_name: str, entity_id: int, new_parent_id: Optional[int]) -> bool:
+    if new_parent_id is None:
+        return False
+    if entity_id == new_parent_id:
+        return True
+    
+    query = f"""
+        WITH RECURSIVE descendants(id) AS (
+            SELECT id FROM {table_name} WHERE parent_id = ?
+            UNION ALL
+            SELECT t.id FROM {table_name} t JOIN descendants d ON t.parent_id = d.id
+        )
+        SELECT 1 FROM descendants WHERE id = ?
+    """
+    cursor = conn.execute(query, (entity_id, new_parent_id))
+    return cursor.fetchone() is not None
+
 def get_location_name(conn: sqlite3.Connection, location_id: Optional[int]) -> Optional[str]:
     if not location_id:
         return None
@@ -274,7 +319,7 @@ def update_location_bookmarks(bookmarks: LocationBookmarksUpdate):
 @app.get("/api/v1/categories", response_model=List[CategoryResponse])
 def read_categories():
     with get_db() as conn:
-        cursor = conn.execute("SELECT id, name, description, created_at, updated_at FROM categories ORDER BY name ASC")
+        cursor = conn.execute("SELECT id, name, description, parent_id, created_at, updated_at FROM categories ORDER BY name ASC")
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -282,9 +327,13 @@ def read_categories():
 def create_category(category: CategoryCreate):
     try:
         with get_db() as conn:
+            if category.parent_id is not None:
+                parent = conn.execute("SELECT id FROM categories WHERE id = ?", (category.parent_id,)).fetchone()
+                if not parent:
+                    raise HTTPException(status_code=400, detail=f"Parent category with ID {category.parent_id} does not exist.")
             cursor = conn.execute(
-                "INSERT INTO categories (name, description) VALUES (?, ?) RETURNING id, name, description, created_at, updated_at",
-                (category.name, category.description)
+                "INSERT INTO categories (name, description, parent_id) VALUES (?, ?, ?) RETURNING id, name, description, parent_id, created_at, updated_at",
+                (category.name, category.description, category.parent_id)
             )
             row = cursor.fetchone()
             return dict(row)
@@ -292,7 +341,51 @@ def create_category(category: CategoryCreate):
         if "UNIQUE constraint failed" in str(e):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Category with name '{category.name}' already exists."
+                detail=f"Category with name '{category.name}' already exists at this hierarchy level."
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Database constraint violation: {str(e)}"
+        )
+
+@app.put("/api/v1/categories/{category_id}", response_model=CategoryResponse)
+def update_category(category_id: int, category_update: CategoryUpdate):
+    try:
+        with get_db() as conn:
+            current = conn.execute("SELECT id, name, description, parent_id FROM categories WHERE id = ?", (category_id,)).fetchone()
+            if not current:
+                raise HTTPException(status_code=404, detail=f"Category with ID {category_id} not found.")
+            
+            update_data = category_update.model_dump(exclude_unset=True)
+            if not update_data:
+                updated = conn.execute("SELECT id, name, description, parent_id, created_at, updated_at FROM categories WHERE id = ?", (category_id,)).fetchone()
+                return dict(updated)
+            
+            if "parent_id" in update_data:
+                new_parent_id = update_data["parent_id"]
+                if new_parent_id is not None:
+                    parent = conn.execute("SELECT id FROM categories WHERE id = ?", (new_parent_id,)).fetchone()
+                    if not parent:
+                        raise HTTPException(status_code=400, detail=f"Parent category with ID {new_parent_id} does not exist.")
+                if check_cycle(conn, "categories", category_id, new_parent_id):
+                    raise HTTPException(status_code=400, detail="Cycle detected: parent category cannot be itself or a descendant.")
+            
+            fields = []
+            params = []
+            for k, v in update_data.items():
+                fields.append(f"{k} = ?")
+                params.append(v)
+            params.append(category_id)
+            
+            conn.execute(f"UPDATE categories SET {', '.join(fields)} WHERE id = ?", params)
+            
+            updated = conn.execute("SELECT id, name, description, parent_id, created_at, updated_at FROM categories WHERE id = ?", (category_id,)).fetchone()
+            return dict(updated)
+    except sqlite3.IntegrityError as e:
+        if "UNIQUE constraint failed" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Category with this name already exists at this hierarchy level."
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -304,7 +397,7 @@ def create_category(category: CategoryCreate):
 @app.get("/api/v1/locations", response_model=List[LocationResponse])
 def read_locations():
     with get_db() as conn:
-        cursor = conn.execute("SELECT id, name, description, created_at, updated_at FROM locations ORDER BY name ASC")
+        cursor = conn.execute("SELECT id, name, description, parent_id, created_at, updated_at FROM locations ORDER BY name ASC")
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -312,9 +405,13 @@ def read_locations():
 def create_location(location: LocationCreate):
     try:
         with get_db() as conn:
+            if location.parent_id is not None:
+                parent = conn.execute("SELECT id FROM locations WHERE id = ?", (location.parent_id,)).fetchone()
+                if not parent:
+                    raise HTTPException(status_code=400, detail=f"Parent location with ID {location.parent_id} does not exist.")
             cursor = conn.execute(
-                "INSERT INTO locations (name, description) VALUES (?, ?) RETURNING id, name, description, created_at, updated_at",
-                (location.name, location.description)
+                "INSERT INTO locations (name, description, parent_id) VALUES (?, ?, ?) RETURNING id, name, description, parent_id, created_at, updated_at",
+                (location.name, location.description, location.parent_id)
             )
             row = cursor.fetchone()
             return dict(row)
@@ -322,7 +419,51 @@ def create_location(location: LocationCreate):
         if "UNIQUE constraint failed" in str(e):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Location with name '{location.name}' already exists."
+                detail=f"Location with name '{location.name}' already exists at this hierarchy level."
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Database constraint violation: {str(e)}"
+        )
+
+@app.put("/api/v1/locations/{location_id}", response_model=LocationResponse)
+def update_location(location_id: int, location_update: LocationUpdate):
+    try:
+        with get_db() as conn:
+            current = conn.execute("SELECT id, name, description, parent_id FROM locations WHERE id = ?", (location_id,)).fetchone()
+            if not current:
+                raise HTTPException(status_code=404, detail=f"Location with ID {location_id} not found.")
+            
+            update_data = location_update.model_dump(exclude_unset=True)
+            if not update_data:
+                updated = conn.execute("SELECT id, name, description, parent_id, created_at, updated_at FROM locations WHERE id = ?", (location_id,)).fetchone()
+                return dict(updated)
+            
+            if "parent_id" in update_data:
+                new_parent_id = update_data["parent_id"]
+                if new_parent_id is not None:
+                    parent = conn.execute("SELECT id FROM locations WHERE id = ?", (new_parent_id,)).fetchone()
+                    if not parent:
+                        raise HTTPException(status_code=400, detail=f"Parent location with ID {new_parent_id} does not exist.")
+                if check_cycle(conn, "locations", location_id, new_parent_id):
+                    raise HTTPException(status_code=400, detail="Cycle detected: parent location cannot be itself or a descendant.")
+            
+            fields = []
+            params = []
+            for k, v in update_data.items():
+                fields.append(f"{k} = ?")
+                params.append(v)
+            params.append(location_id)
+            
+            conn.execute(f"UPDATE locations SET {', '.join(fields)} WHERE id = ?", params)
+            
+            updated = conn.execute("SELECT id, name, description, parent_id, created_at, updated_at FROM locations WHERE id = ?", (location_id,)).fetchone()
+            return dict(updated)
+    except sqlite3.IntegrityError as e:
+        if "UNIQUE constraint failed" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Location with this name already exists at this hierarchy level."
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -338,7 +479,36 @@ def read_items(
     status_filter: Optional[str] = Query(None, alias="status"),
     search: Optional[str] = Query(None)
 ):
-    query = """
+    cte_clauses = []
+    where_clauses = []
+    params = []
+    
+    if category_id is not None:
+        cte_clauses.append("""
+            subcats(id) AS (
+                SELECT id FROM categories WHERE id = ?
+                UNION ALL
+                SELECT c.id FROM categories c JOIN subcats s ON c.parent_id = s.id
+            )
+        """)
+        where_clauses.append("i.category_id IN (SELECT id FROM subcats)")
+        params.append(category_id)
+        
+    if location_id is not None:
+        cte_clauses.append("""
+            sublocs(id) AS (
+                SELECT id FROM locations WHERE id = ?
+                UNION ALL
+                SELECT l.id FROM locations l JOIN sublocs s ON l.parent_id = s.id
+            )
+        """)
+        where_clauses.append("i.location_id IN (SELECT id FROM sublocs)")
+        params.append(location_id)
+        
+    cte_prefix = f"WITH {', '.join(cte_clauses)}" if cte_clauses else ""
+    
+    query = f"""
+        {cte_prefix}
         SELECT 
             i.id, i.name, i.description, 
             i.category_id, c.name AS category_name,
@@ -351,27 +521,21 @@ def read_items(
         LEFT JOIN locations l ON i.location_id = l.id
         WHERE 1=1
     """
-    params = []
-
-    if category_id is not None:
-        query += " AND i.category_id = ?"
-        params.append(category_id)
-
-    if location_id is not None:
-        query += " AND i.location_id = ?"
-        params.append(location_id)
-
+    
+    for clause in where_clauses:
+        query += f" AND {clause}"
+        
     if status_filter is not None:
         query += " AND i.status = ?"
         params.append(status_filter)
-
+        
     if search:
         query += " AND (i.name LIKE ? OR i.description LIKE ? OR i.serial_number LIKE ? OR i.model_number LIKE ?)"
         like_search = f"%{search}%"
         params.extend([like_search, like_search, like_search, like_search])
-
+        
     query += " ORDER BY i.name ASC"
-
+    
     with get_db() as conn:
         cursor = conn.execute(query, params)
         rows = cursor.fetchall()

@@ -67,8 +67,8 @@ export default function App() {
         notes: ''
     });
 
-    const [categoryFields, setCategoryFields] = useState({ name: '', description: '' });
-    const [locationFields, setLocationFields] = useState({ name: '', description: '' });
+    const [categoryFields, setCategoryFields] = useState({ name: '', description: '', parent_id: '' });
+    const [locationFields, setLocationFields] = useState({ name: '', description: '', parent_id: '' });
 
     // Was form validated (triggers custom validation borders)
     const [itemFormValidated, setItemFormValidated] = useState(false);
@@ -318,6 +318,44 @@ export default function App() {
         }
     };
 
+    const handleCreateCategoryInline = async (name) => {
+        try {
+            const res = await fetch(`${API_BASE}/categories`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description: 'Created inline' })
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.detail || 'Failed to create category');
+            }
+            const newCat = await res.json();
+            await fetchCategories();
+            setItemFields(prev => ({ ...prev, category_id: newCat.id }));
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+
+    const handleCreateLocationInline = async (name) => {
+        try {
+            const res = await fetch(`${API_BASE}/locations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description: 'Created inline' })
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.detail || 'Failed to create location');
+            }
+            const newLoc = await res.json();
+            await fetchLocations();
+            setItemFields(prev => ({ ...prev, location_id: newLoc.id }));
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+
     const handleCategorySubmit = async (e) => {
         e.preventDefault();
         setCatFormValidated(true);
@@ -326,7 +364,8 @@ export default function App() {
 
         const payload = {
             name: categoryFields.name,
-            description: categoryFields.description || null
+            description: categoryFields.description || null,
+            parent_id: categoryFields.parent_id ? Number(categoryFields.parent_id) : null
         };
 
         try {
@@ -341,7 +380,7 @@ export default function App() {
                 throw new Error(err.detail || 'Failed to create category');
             }
 
-            setCategoryFields({ name: '', description: '' });
+            setCategoryFields({ name: '', description: '', parent_id: '' });
             setCatFormValidated(false);
             categoryDialogRef.current.close();
             refreshAllData();
@@ -358,7 +397,8 @@ export default function App() {
 
         const payload = {
             name: locationFields.name,
-            description: locationFields.description || null
+            description: locationFields.description || null,
+            parent_id: locationFields.parent_id ? Number(locationFields.parent_id) : null
         };
 
         try {
@@ -373,7 +413,7 @@ export default function App() {
                 throw new Error(err.detail || 'Failed to create location');
             }
 
-            setLocationFields({ name: '', description: '' });
+            setLocationFields({ name: '', description: '', parent_id: '' });
             setLocFormValidated(false);
             locationDialogRef.current.close();
             refreshAllData();
@@ -399,14 +439,56 @@ export default function App() {
         }
     };
 
-    // --- Statistics Computations ---
+    // --- Tree Hierarchy States and Handlers ---
+    const [expandedCategories, setExpandedCategories] = useState([]);
+    const [expandedLocations, setExpandedLocations] = useState([]);
 
-    const stats = {
-        totalItems: items.length,
-        totalQty: items.reduce((sum, item) => sum + item.quantity, 0),
-        lowStock: items.filter(item => item.status === 'low_stock').length,
-        outOfStock: items.filter(item => item.status === 'out_of_stock').length,
-        totalValue: items.reduce((sum, item) => sum + (item.quantity * (item.purchase_price || 0)), 0)
+    const handleToggleCategoryExpand = (id) => {
+        setExpandedCategories(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const handleToggleLocationExpand = (id) => {
+        setExpandedLocations(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const rootCategories = categories.filter(cat => {
+        return !cat.parent_id || !categories.some(c => c.id === cat.parent_id);
+    });
+
+    const rootLocations = locations.filter(loc => {
+        return !loc.parent_id || !locations.some(l => l.id === loc.parent_id);
+    });
+
+    const getCategoryPath = (catId, categoriesList) => {
+        const path = [];
+        let current = categoriesList.find(c => c.id === catId);
+        while (current) {
+            path.unshift(current.name);
+            if (current.parent_id) {
+                current = categoriesList.find(c => c.id === current.parent_id);
+            } else {
+                current = null;
+            }
+        }
+        return path.join(' > ');
+    };
+
+    const getLocationPath = (locId, locationsList) => {
+        const path = [];
+        let current = locationsList.find(l => l.id === locId);
+        while (current) {
+            path.unshift(current.name);
+            if (current.parent_id) {
+                current = locationsList.find(l => l.id === current.parent_id);
+            } else {
+                current = null;
+            }
+        }
+        return path.join(' > ');
     };
 
     return (
@@ -418,32 +500,6 @@ export default function App() {
                     <span className="logo-icon">▲</span>
                     <h1 className="logo-title">I<span>M</span>S</h1>
                 </div>
-
-                {/* Stats Dashboard */}
-                <section class="stats-container" aria-label="Inventory Statistics">
-                    <div className="stat-card">
-                        <span className="stat-label">Total Items</span>
-                        <span className="stat-value">{stats.totalItems}</span>
-                    </div>
-                    <div className="stat-card">
-                        <span className="stat-label">Total Stock</span>
-                        <span className="stat-value">{stats.totalQty}</span>
-                    </div>
-                    <div className="stat-card highlight-warning">
-                        <span className="stat-label">Low Stock</span>
-                        <span className="stat-value">{stats.lowStock}</span>
-                    </div>
-                    <div className="stat-card highlight-danger">
-                        <span className="stat-label">Out of Stock</span>
-                        <span className="stat-value">{stats.outOfStock}</span>
-                    </div>
-                    <div className="stat-card highlight-success">
-                        <span className="stat-label">Est. Value</span>
-                        <span className="stat-value">
-                            ${stats.totalValue.toLocaleString([], { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                    </div>
-                </section>
             </header>
 
             <div className="app-layout">
@@ -480,19 +536,20 @@ export default function App() {
                                     ⚙️
                                 </button>
                             </div>
-                            {categories
-                                .filter(cat => !showBookmarkedCategoriesOnly || bookmarkedCategoryIds.includes(cat.id))
-                                .map(cat => (
-                                    <div 
-                                        key={cat.id} 
-                                        className={`chip ${selectedCategory === cat.id ? 'active' : ''}`}
-                                        onClick={() => setSelectedCategory(selectedCategory === cat.id ? '' : cat.id)}
-                                        title={cat.description || ''}
-                                    >
-                                        {cat.name}
-                                    </div>
-                                ))
-                            }
+                            {rootCategories.map(cat => (
+                                <SidebarTreeNode
+                                    key={cat.id}
+                                    node={cat}
+                                    allNodes={categories}
+                                    selectedId={selectedCategory}
+                                    onSelect={(id) => setSelectedCategory(selectedCategory === id ? '' : id)}
+                                    depth={0}
+                                    expandedIds={expandedCategories}
+                                    onToggleExpand={handleToggleCategoryExpand}
+                                    bookmarkedIds={bookmarkedCategoryIds}
+                                    showBookmarkedOnly={showBookmarkedCategoriesOnly}
+                                />
+                            ))}
                         </div>
                     </section>
 
@@ -527,19 +584,20 @@ export default function App() {
                                     ⚙️
                                 </button>
                             </div>
-                            {locations
-                                .filter(loc => !showBookmarkedLocationsOnly || bookmarkedLocationIds.includes(loc.id))
-                                .map(loc => (
-                                    <div 
-                                        key={loc.id} 
-                                        className={`chip ${selectedLocation === loc.id ? 'active' : ''}`}
-                                        onClick={() => setSelectedLocation(selectedLocation === loc.id ? '' : loc.id)}
-                                        title={loc.description || ''}
-                                    >
-                                        {loc.name}
-                                    </div>
-                                ))
-                            }
+                            {rootLocations.map(loc => (
+                                <SidebarTreeNode
+                                    key={loc.id}
+                                    node={loc}
+                                    allNodes={locations}
+                                    selectedId={selectedLocation}
+                                    onSelect={(id) => setSelectedLocation(selectedLocation === id ? '' : id)}
+                                    depth={0}
+                                    expandedIds={expandedLocations}
+                                    onToggleExpand={handleToggleLocationExpand}
+                                    bookmarkedIds={bookmarkedLocationIds}
+                                    showBookmarkedOnly={showBookmarkedLocationsOnly}
+                                />
+                            ))}
                         </div>
                     </section>
                 </aside>
@@ -607,43 +665,35 @@ export default function App() {
                                 <p>Try adjusting your search criteria or register a new item.</p>
                             </div>
                         ) : (
-                            <div className="items-grid">
+                            <div className="items-list">
                                 {items.map(item => (
-                                    <article key={item.id} className="item-card">
-                                        <div>
-                                            <header className="item-card-header">
-                                                <h3 className="item-title">{item.name}</h3>
-                                                <span className={`status-pill status-${item.status}`}>
-                                                    {item.status.replace('_', ' ')}
-                                                </span>
-                                            </header>
-                                            <p className="item-desc">{item.description || 'No description provided.'}</p>
-                                            <div className="item-metadata">
-                                                <div className="meta-row">
-                                                    <span>Category:</span>
-                                                    <span className="meta-value">{item.category_name || 'Uncategorized'}</span>
-                                                </div>
-                                                <div className="meta-row">
-                                                    <span>Location:</span>
-                                                    <span className="meta-value">{item.location_name || 'Unknown'}</span>
-                                                </div>
-                                                <div className="meta-row">
-                                                    <span>Quantity:</span>
-                                                    <span className="meta-value">{item.quantity}</span>
-                                                </div>
-                                                <div className="meta-row">
-                                                    <span>Price:</span>
-                                                    <span className="meta-value">
-                                                        {item.purchase_price !== null ? `$${item.purchase_price.toFixed(2)}` : '—'}
-                                                    </span>
-                                                </div>
-                                            </div>
+                                    <div key={item.id} className="item-list-row">
+                                        <div className="item-status-col">
+                                            <span className={`status-pill status-${item.status}`}>
+                                                {item.status.replace('_', ' ')}
+                                            </span>
                                         </div>
-                                        <div className="item-actions">
+                                        <div className="item-info-col">
+                                            <h3 className="item-title">{item.name}</h3>
+                                            <p className="item-desc">{item.description || 'No description provided.'}</p>
+                                        </div>
+                                        <div className="item-path-col">
+                                            <div className="path-label">Category</div>
+                                            <div className="path-value">{item.category_id ? getCategoryPath(item.category_id, categories) : 'Uncategorized'}</div>
+                                        </div>
+                                        <div className="item-path-col">
+                                            <div className="path-label">Location</div>
+                                            <div className="path-value">{item.location_id ? getLocationPath(item.location_id, locations) : 'Unknown Location'}</div>
+                                        </div>
+                                        <div className="item-quantity-col">
+                                            <div className="qty-label">Qty</div>
+                                            <div className="qty-value">{item.quantity}</div>
+                                        </div>
+                                        <div className="item-actions-col">
                                             <button className="btn-action-edit" onClick={() => openEditItem(item)}>Edit</button>
                                             <button className="btn-action-delete" onClick={() => handleItemDelete(item.id)}>Delete</button>
                                         </div>
-                                    </article>
+                                    </div>
                                 ))}
                             </div>
                         )}
@@ -725,28 +775,28 @@ export default function App() {
 
                         <div className="form-group">
                             <label>Category</label>
-                            <select 
-                                value={itemFields.category_id}
-                                onChange={(e) => setItemFields({ ...itemFields, category_id: e.target.value })}
-                            >
-                                <option value="">Uncategorized</option>
-                                {categories.map(cat => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                ))}
-                            </select>
+                            <FuzzySelect
+                                options={categories}
+                                selectedId={itemFields.category_id}
+                                onSelect={(id) => setItemFields({ ...itemFields, category_id: id })}
+                                bookmarkedIds={bookmarkedCategoryIds}
+                                placeholder="Uncategorized"
+                                onCreate={handleCreateCategoryInline}
+                                typeLabel="Category"
+                            />
                         </div>
 
                         <div className="form-group">
                             <label>Location</label>
-                            <select 
-                                value={itemFields.location_id}
-                                onChange={(e) => setItemFields({ ...itemFields, location_id: e.target.value })}
-                            >
-                                <option value="">Unknown Location</option>
-                                {locations.map(loc => (
-                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
-                                ))}
-                            </select>
+                            <FuzzySelect
+                                options={locations}
+                                selectedId={itemFields.location_id}
+                                onSelect={(id) => setItemFields({ ...itemFields, location_id: id })}
+                                bookmarkedIds={bookmarkedLocationIds}
+                                placeholder="Unknown Location"
+                                onCreate={handleCreateLocationInline}
+                                typeLabel="Location"
+                            />
                         </div>
 
                         <div className="form-group">
@@ -774,48 +824,6 @@ export default function App() {
                                 <option value="borrowed">Borrowed</option>
                                 <option value="lost">Lost</option>
                             </select>
-                        </div>
-
-                        <div className="form-group">
-                            <label>Serial Number</label>
-                            <input 
-                                type="text" 
-                                value={itemFields.serial_number}
-                                onChange={(e) => setItemFields({ ...itemFields, serial_number: e.target.value })}
-                                placeholder="S/N or Tag ID"
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label>Model Number</label>
-                            <input 
-                                type="text" 
-                                value={itemFields.model_number}
-                                onChange={(e) => setItemFields({ ...itemFields, model_number: e.target.value })}
-                                placeholder="Model Name/No."
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label>Purchase Date</label>
-                            <input 
-                                type="date" 
-                                value={itemFields.purchase_date}
-                                onChange={(e) => setItemFields({ ...itemFields, purchase_date: e.target.value })}
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label>Purchase Price ($)</label>
-                            <input 
-                                type="number" 
-                                value={itemFields.purchase_price}
-                                onChange={(e) => setItemFields({ ...itemFields, purchase_price: e.target.value })}
-                                min="0" 
-                                step="0.01" 
-                                placeholder="0.00"
-                            />
-                            <span className="error-msg">Price must be positive</span>
                         </div>
 
                         <div className="form-group full-width">
@@ -863,11 +871,24 @@ export default function App() {
                     </div>
 
                     <div className="form-group">
+                        <label>Parent Category</label>
+                        <select 
+                            value={categoryFields.parent_id || ''}
+                            onChange={(e) => setCategoryFields({ ...categoryFields, parent_id: e.target.value ? Number(e.target.value) : '' })}
+                        >
+                            <option value="">None (Root Category)</option>
+                            {categories.map(c => (
+                                <option key={c.id} value={c.id}>{getCategoryPath(c.id, categories)}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="form-group">
                         <label>Description</label>
                         <textarea 
                             value={categoryFields.description}
                             onChange={(e) => setCategoryFields({ ...categoryFields, description: e.target.value })}
-                            rows="3" 
+                            rows="2" 
                             placeholder="Category description"
                         />
                     </div>
@@ -906,11 +927,24 @@ export default function App() {
                     </div>
 
                     <div className="form-group">
+                        <label>Parent Location</label>
+                        <select 
+                            value={locationFields.parent_id || ''}
+                            onChange={(e) => setLocationFields({ ...locationFields, parent_id: e.target.value ? Number(e.target.value) : '' })}
+                        >
+                            <option value="">None (Root Location)</option>
+                            {locations.map(l => (
+                                <option key={l.id} value={l.id}>{getLocationPath(l.id, locations)}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="form-group">
                         <label>Description</label>
                         <textarea 
                             value={locationFields.description}
                             onChange={(e) => setLocationFields({ ...locationFields, description: e.target.value })}
-                            rows="3" 
+                            rows="2" 
                             placeholder="Location details"
                         />
                     </div>
@@ -1014,5 +1048,214 @@ export default function App() {
                 </form>
             </dialog>
         </>
+    );
+}
+
+// Recursive sidebar node component
+function SidebarTreeNode({ 
+    node, 
+    allNodes, 
+    selectedId, 
+    onSelect, 
+    depth, 
+    expandedIds, 
+    onToggleExpand,
+    bookmarkedIds,
+    showBookmarkedOnly
+}) {
+    const children = allNodes.filter(n => n.parent_id === node.id);
+    const hasChildren = children.length > 0;
+    const isExpanded = expandedIds.includes(node.id);
+    const isVisible = !showBookmarkedOnly || bookmarkedIds.includes(node.id);
+    
+    const hasVisibleChildren = children.some(child => {
+        const checkVisible = (n) => {
+            if (bookmarkedIds.includes(n.id)) return true;
+            const sub = allNodes.filter(c => c.parent_id === n.id);
+            return sub.some(checkVisible);
+        };
+        return !showBookmarkedOnly || checkVisible(child);
+    });
+
+    if (!isVisible && !hasVisibleChildren) return null;
+
+    return (
+        <div className="sidebar-tree-node-wrapper" style={{ textTransform: 'none' }}>
+            <div 
+                className="sidebar-tree-row" 
+                style={{ paddingLeft: `${depth * 14}px` }}
+            >
+                {hasChildren ? (
+                    <button 
+                        type="button"
+                        className="btn-tree-expand" 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleExpand(node.id);
+                        }}
+                    >
+                        {isExpanded ? '▼' : '▶'}
+                    </button>
+                ) : (
+                    <span className="tree-dot">•</span>
+                )}
+                
+                <div 
+                    className={`chip tree-chip ${Number(selectedId) === node.id ? 'active' : ''}`}
+                    onClick={() => onSelect(node.id)}
+                    title={node.description || ''}
+                >
+                    {node.name}
+                    {bookmarkedIds.includes(node.id) && <span style={{ marginLeft: '4px', fontSize: '0.75rem' }}>⭐</span>}
+                </div>
+            </div>
+
+            {hasChildren && isExpanded && (
+                <div className="sidebar-tree-children">
+                    {children.map(child => (
+                        <SidebarTreeNode
+                            key={child.id}
+                            node={child}
+                            allNodes={allNodes}
+                            selectedId={selectedId}
+                            onSelect={onSelect}
+                            depth={depth + 1}
+                            expandedIds={expandedIds}
+                            onToggleExpand={onToggleExpand}
+                            bookmarkedIds={bookmarkedIds}
+                            showBookmarkedOnly={showBookmarkedOnly}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Custom Fuzzy Select Component
+function FuzzySelect({ 
+    options, 
+    selectedId, 
+    onSelect, 
+    bookmarkedIds, 
+    placeholder, 
+    onCreate, 
+    typeLabel 
+}) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (containerRef.current && !containerRef.current.contains(e.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const filteredOptions = options.filter(opt => 
+        opt.name.toLowerCase().includes(search.toLowerCase())
+    );
+
+    const exactMatch = options.some(opt => opt.name.toLowerCase() === search.toLowerCase().trim());
+    const selectedItem = options.find(opt => opt.id === Number(selectedId));
+    
+    const getPath = (id) => {
+        const path = [];
+        let curr = options.find(o => o.id === id);
+        while (curr) {
+            path.unshift(curr.name);
+            curr = curr.parent_id ? options.find(o => o.id === curr.parent_id) : null;
+        }
+        return path.join(' > ') || placeholder;
+    };
+
+    const displayVal = selectedItem ? getPath(selectedItem.id) : placeholder;
+
+    return (
+        <div className="custom-select-container" ref={containerRef}>
+            <div 
+                className="custom-select-trigger" 
+                onClick={() => {
+                    setIsOpen(!isOpen);
+                    setSearch('');
+                }}
+            >
+                <span>{displayVal}</span>
+                <span className="select-arrow">▼</span>
+            </div>
+
+            {isOpen && (
+                <div className="custom-select-dropdown">
+                    <div className="custom-select-search-wrapper">
+                        <input 
+                            type="text" 
+                            className="custom-select-search-input"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder={`Search ${typeLabel.toLowerCase()}s...`}
+                            autoFocus
+                        />
+                    </div>
+                    <div className="custom-select-options-list">
+                        {bookmarkedIds.length > 0 && search === '' && (
+                            <div className="select-group-header">🔖 Bookmarked</div>
+                        )}
+                        {search === '' && bookmarkedIds.map(bid => {
+                            const opt = options.find(o => o.id === bid);
+                            if (!opt) return null;
+                            return (
+                                <div 
+                                    key={`bookmark-${opt.id}`} 
+                                    className={`custom-select-option ${Number(selectedId) === opt.id ? 'selected' : ''}`}
+                                    onClick={() => {
+                                        onSelect(opt.id);
+                                        setIsOpen(false);
+                                    }}
+                                >
+                                    ⭐ {getPath(opt.id)}
+                                </div>
+                            );
+                        })}
+
+                        {bookmarkedIds.length > 0 && search === '' && (
+                            <div className="select-group-header">All Options</div>
+                        )}
+                        
+                        {filteredOptions.length > 0 ? (
+                            filteredOptions.map(opt => (
+                                <div 
+                                    key={opt.id} 
+                                    className={`custom-select-option ${Number(selectedId) === opt.id ? 'selected' : ''}`}
+                                    onClick={() => {
+                                        onSelect(opt.id);
+                                        setIsOpen(false);
+                                    }}
+                                >
+                                    {getPath(opt.id)}
+                                </div>
+                            ))
+                        ) : (
+                            search.trim() === '' && <div className="custom-select-no-options">No options available</div>
+                        )}
+
+                        {search.trim() !== '' && !exactMatch && (
+                            <div 
+                                className="custom-select-create-option"
+                                onClick={() => {
+                                    onCreate(search.trim());
+                                    setIsOpen(false);
+                                }}
+                            >
+                                ＋ Create "{search.trim()}"
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
